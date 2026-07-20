@@ -1,0 +1,43 @@
+# ------------------------------------------------------------
+# Entornos virtuales (no se commitean: cada quien los regenera
+# con `python src/00_init.py` o `pip install -r requirements.txt`)
+# ------------------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+
+# ------------------------------------------------------------
+# Python
+# ------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ipynb_checkpoints/
+*.egg-info/
+.Python
+
+# ------------------------------------------------------------
+# Datos generados (son reproducibles corriendo el pipeline;
+# NO se versionan). Los datos crudos sí se conservan.
+# ------------------------------------------------------------
+data/processed/
+data/interim/
+data/tmp/
+*.log
+
+# ------------------------------------------------------------
+# Sistema operativo / editores
+# ------------------------------------------------------------
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# ------------------------------------------------------------
+# Variables de entorno / secretos
+# ------------------------------------------------------------
+.env
+.env.*
