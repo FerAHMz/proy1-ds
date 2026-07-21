@@ -364,7 +364,207 @@ limitación, no se corrigen.
 
 ## 3. Teléfono, director y supervisor (P3)
 
-*(pendiente)*
+Variables cubiertas: `TELEFONO`, `SUPERVISOR` y `DIRECTOR`. El diagnóstico está
+en [notebooks/01_diagnostico.ipynb](notebooks/01_diagnostico.ipynb), Sección 4.
+El teléfono es un dato con formato esperado fijo, 8 dígitos según la numeración
+de Guatemala, mientras que supervisor y director son nombres propios de
+personas, así que sus problemas se parecen a los de la sección 2, tildes
+inconsistentes y ruido de formato.
+
+### 3.1 `TELEFONO`
+
+#### Problema T1: valores faltantes (946 registros, 7.97%)
+
+- **Regla:** no imputar, los faltantes se conservan como `NA`.
+- **Por qué funcionará:** un número de teléfono no puede deducirse de las demás
+  columnas, imputarlo inventaría datos de contacto falsos.
+- **Riesgos:** ninguno relevante, solo se documenta la cobertura de la variable
+  en el libro de códigos.
+
+#### Problema T2: varios números por celda con separadores inconsistentes (212 registros)
+
+203 celdas traen más de un número separado por guion, coma, espacio, barra o la
+palabra Y, y 9 traen texto como `FAX`, `AL` o `ESTX`. También hay rangos
+abreviados como `22202870-73`.
+
+- **Regla:** extraer con una expresión regular todos los bloques de exactamente
+  8 dígitos de la celda y unirlos con `;` como separador único. El texto
+  (`Y`, `FAX`, `AL`) se descarta. Los fragmentos que no formen un número
+  completo, como el `73` del rango `22202870-73`, se descartan porque
+  reconstruirlos sería adivinar. Si la celda no contiene ningún bloque de 8
+  dígitos queda `NA`.
+- **Por qué funcionará:** el patrón estructural del diagnóstico (celda 4.2)
+  muestra que todos los casos múltiples son combinaciones de bloques de dígitos
+  con separadores variados, la extracción por regex los cubre todos con una
+  sola regla determinista y el separador `;` deja la columna parseable.
+- **Riesgos:**
+  - Perder números de fax o extensiones. El grupo lo acepta, el crudo conserva
+    el valor original y la decisión queda documentada.
+  - Confundir un rango abreviado con dos números. La regla solo toma bloques
+    completos de 8 dígitos, así que el fragmento corto se pierde pero nunca se
+    inventa un número.
+
+#### Problema T3: números de 7 dígitos o menos (46 registros)
+
+34 celdas traen un número de 7 dígitos, la numeración vieja del país, y hay
+valores de hasta 2 caracteres.
+
+- **Regla:** convertir a `NA`. No se intenta completar el número agregando el
+  prefijo actual.
+- **Por qué funcionará:** el cambio a 8 dígitos en Guatemala no fue agregar un
+  dígito fijo para todas las líneas, depende del tipo de línea y operador, así
+  que cualquier reconstrucción sería inventar un número que puede pertenecer a
+  otra persona.
+- **Riesgos:** se pierden 46 teléfonos posiblemente recuperables a mano. Se
+  acepta, quedan en el crudo y los faltantes de la variable suben, lo que se
+  reporta en el informe antes y después.
+
+#### Problema T4: números inválidos (7 registros)
+
+3 celdas con `00000000` y 4 números de 8 dígitos que inician con 0 o 9,
+prefijos que no existen en la numeración nacional.
+
+- **Regla:** convertir a `NA`. La validación final exige que todo número de la
+  columna limpia cumpla `^[2-8]\d{7}$`.
+- **Por qué funcionará:** los prefijos válidos en Guatemala son 2 a 8
+  (fijos 2-7, móviles 3-5, otros servicios 6-8), la regla identifica exactamente
+  a los 7 casos sin tocar números legítimos.
+- **Riesgos:** ninguno relevante, `00000000` es un relleno evidente y un número
+  con prefijo inexistente no es marcable de todas formas.
+
+#### Nota (no es error): números compartidos entre establecimientos
+
+2,165 números se repiten en 6,515 filas, el extremo es `22067425` con 71
+registros. Jornadas, planes o sedes del mismo plantel comparten teléfono.
+
+- **Regla:** no se corrige nada, se documenta en el libro de códigos que el
+  teléfono no sirve como identificador único de establecimiento, aunque sí como
+  evidencia de duplicado parcial en la regla E7.
+
+### 3.2 `SUPERVISOR`
+
+#### Problema S1: valores faltantes (536 registros, 4.52%)
+
+535 celdas vacías más un falso valor hecho de guiones y un espacio interno que
+el patrón general de marcadores no captura.
+
+- **Regla:** ampliar el patrón de marcadores para aceptar espacios entre los
+  guiones, unificar ese caso a `NA` y no imputar el resto.
+- **Por qué funcionará:** el diagnóstico (celda 4.3) ya identificó el único
+  valor que se escapa del patrón, con la ampliación la detección queda completa.
+- **Riesgos:** ninguno relevante, el nombre de una persona no se puede imputar.
+
+#### Problema S2: mismo nombre con y sin tildes (187 nombres base de 1,093)
+
+El caso más grande es `CARLOS HUMBERTO GONZALEZ DE LEON` con 227 registros sin
+tilde y 166 con tilde.
+
+- **Regla:** agrupar por el nombre sin tildes (`sin_tildes`, la misma función
+  del diagnóstico) y unificar cada grupo a una sola grafía, la variante con
+  tildes cuando existe porque es la forma correcta del nombre, y si hay más de
+  una variante con tilde, la más frecuente. La lista de 187 grupos se revisa
+  manualmente antes de aplicar el mapeo.
+- **Por qué funcionará:** el diagnóstico confirmó que ningún distrito de los
+  1,680 tiene más de un supervisor, la relación distrito supervisor es uno a
+  uno, así que dos grafías del mismo nombre base son la misma persona y no dos
+  personas distintas que se confundan al quitar tildes.
+- **Riesgos:**
+  - Unificar a dos personas homónimas de distritos distintos. La unificación es
+    solo de grafía del texto, no fusiona registros ni distritos, así que el
+    riesgo real es mínimo y la revisión manual de la lista lo cubre.
+  - Elegir la grafía equivocada como canónica. Se mitiga prefiriendo la forma
+    con tildes y documentando el mapeo completo.
+
+#### Problema S3: puntuación colgante y errores puntuales (~35 registros)
+
+25 nombres terminan en punto o coma, 9 usan acento invertido o apóstrofo
+(`ORTÌZ`, `O´NELL`) y hay un cero en lugar de la letra O en `ACEVED0`.
+
+- **Regla:** quitar el punto o la coma final con regex, reemplazar los acentos
+  invertidos por la tilde correcta (`Ì` → `Í`, `È` → `É`) y el apóstrofo `´`
+  por `'`, igual que la regla E2. El caso `ACEVED0` → `ACEVEDO` se corrige con
+  un mapeo explícito documentado.
+- **Por qué funcionará:** son sustituciones deterministas de caracteres que no
+  existen legítimamente al final o dentro de un nombre en español, y el volumen
+  es tan pequeño que cada caso se puede verificar a mano.
+- **Riesgos:** alterar un apellido extranjero legítimo. Se mitiga revisando los
+  casos afectados, que son pocos, antes de aplicar.
+
+### 3.3 `DIRECTOR`
+
+#### Problema D1: faltantes y marcadores de nulo (2,147 registros, 18.1%)
+
+1,732 celdas vacías, 411 marcadores capturados por el patrón general (rachas de
+guiones, `SIN DATO`, puntos, `XXX`, `0`) y 4 variantes que se escapan
+(`000000`, `0000000`, `SIN DATOS`, `SIN DATOS ( TEMPORAL TITULOS )`).
+
+- **Regla:** ampliar el patrón de marcadores para cubrir ceros repetidos y
+  `SIN DATOS` con o sin texto extra, unificar todo a `NA` y no imputar.
+- **Por qué funcionará:** el desglose del diagnóstico (celda 4.4) enumeró todas
+  las variantes presentes, el patrón ampliado las captura por completo y no hay
+  nombres reales que empiecen con ceros o con la frase `SIN DATOS`.
+- **Riesgos:** es la variable con más faltantes del dataset y la limpieza lo
+  hace visible, los faltantes suben de 1,732 a 2,147. Es el comportamiento
+  correcto y se reporta así en el informe antes y después.
+
+#### Problema D2: títulos académicos pegados al nombre (20 registros)
+
+Valores como `LICDA. DORIS ZUNUN CARRERA` o `PEM. JESÚS ÁNGEL TOLEDO`.
+
+- **Regla:** remover el título con una regex anclada al inicio del valor sobre
+  una lista cerrada (`PROF`, `LIC`, `LICDA`, `ING`, `PEM`, `DR`, `DRA`, con o
+  sin punto), dejando solo el nombre.
+- **Por qué funcionará:** la lista sale del propio diagnóstico, el ancla al
+  inicio y el límite de palabra evitan tocar apellidos que contengan esas
+  letras.
+- **Riesgos:** perder la información del título. Se acepta, el título no es
+  parte del nombre y la columna gana consistencia, el crudo lo conserva.
+
+#### Problema D3: mismo nombre con y sin tildes (149 nombres base)
+
+- **Regla:** misma unificación de grafía que S2, agrupar por nombre sin tildes
+  y llevar cada grupo a una sola forma, con revisión manual de la lista.
+- **Por qué funcionará:** la lógica ya está validada en `SUPERVISOR` y aquí
+  también se unifica solo la escritura del texto.
+- **Riesgos:** a diferencia del supervisor no hay una relación uno a uno con el
+  distrito que garantice que dos grafías sean la misma persona, dos directores
+  distintos pueden llamarse igual. Por eso la regla no fusiona registros ni
+  deduce identidad, solo estandariza la escritura, y así se documenta.
+
+#### Problema D4: ruido puntual (18 registros)
+
+17 valores con acento invertido (`HÈCTOR`, `MARROQUÌN`) y uno con guiones
+pegados al nombre (`----MARIA DEL ROSARIO LOPEZ ESCOBAR`).
+
+- **Regla:** reemplazar `Ì` → `Í`, `È` → `É` y demás acentos invertidos por su
+  tilde correcta, y quitar los guiones iniciales con una regex anclada al
+  inicio.
+- **Por qué funcionará:** el acento grave no existe en la ortografía del
+  español, así que el reemplazo no tiene falsos positivos, y el patrón de
+  guiones iniciales solo afecta al caso detectado.
+- **Riesgos:** ninguno relevante, son sustituciones puntuales verificables a
+  mano.
+
+### 3.4 Resumen de reglas (teléfono, director y supervisor)
+
+| # | Variable | Problema | Regla | Registros afectados (esperados) |
+|---|---|---|---|---|
+| T1 | `TELEFONO` | faltantes | conservar `NA`, no imputar | 946 |
+| T2 | `TELEFONO` | varios números y separadores inconsistentes | extraer bloques de 8 dígitos, unir con `;` | 212 |
+| T3 | `TELEFONO` | números de 7 dígitos o menos | convertir a `NA`, no reconstruir | 46 |
+| T4 | `TELEFONO` | inválidos (`00000000`, prefijo 0 o 9) | convertir a `NA`, validar `^[2-8]\d{7}$` | 7 |
+| S1 | `SUPERVISOR` | faltantes + marcador de guiones con espacio | ampliar patrón, unificar a `NA` | 536 |
+| S2 | `SUPERVISOR` | mismo nombre con y sin tildes | unificar grafía por nombre base, revisión manual | 187 nombres base |
+| S3 | `SUPERVISOR` | puntuación colgante, acentos invertidos, `ACEVED0` | sustituciones deterministas + mapeo explícito | ~35 |
+| D1 | `DIRECTOR` | faltantes + marcadores (`---`, `SIN DATO`, `000000`...) | ampliar patrón, unificar a `NA`, no imputar | 2,147 |
+| D2 | `DIRECTOR` | títulos académicos (`LICDA.`, `PEM.`) | regex anclada con lista cerrada | 20 |
+| D3 | `DIRECTOR` | mismo nombre con y sin tildes | unificar grafía por nombre base, revisión manual | 149 nombres base |
+| D4 | `DIRECTOR` | acentos invertidos y guiones pegados | sustituciones puntuales | 18 |
+
+Ninguna regla elimina filas y no se crean variables nuevas en esta sección. Los
+teléfonos compartidos entre establecimientos se documentan como limitación en
+el libro de códigos y sirven de evidencia para los duplicados parciales de la
+regla E7.
 
 ## 4. Código y variables categóricas (P4)
 
