@@ -192,7 +192,175 @@ el libro de códigos).
 
 ## 2. Establecimiento y dirección (P2)
 
-*(pendiente)*
+Variables cubiertas: `ESTABLECIMIENTO` y `DIRECCION`. Son campos de **texto
+libre**, así que los problemas no están en el dominio sino en el **formato**
+(tildes, comillas, puntuación, abreviaturas) y en los **duplicados parciales**
+(mismo establecimiento escrito de varias maneras). El diagnóstico está en
+[notebooks/01_diagnostico.ipynb](notebooks/01_diagnostico.ipynb), Sección 3.
+
+### 2.1 `ESTABLECIMIENTO`
+
+#### Problema E1: valores faltantes (5 registros, 0.04%)
+
+- **Regla:** no imputar; los faltantes se conservan como `NA`.
+- **Por qué funcionará:** el nombre del establecimiento es un nombre propio que
+  no puede deducirse con certeza de las demás columnas; inventarlo introduciría
+  datos falsos.
+- **Riesgos:** 5 registros quedan sin nombre. El grupo lo acepta y lo documenta
+  en el informe antes/después. Es un volumen despreciable (0.04%).
+
+#### Problema E2: normalización de texto (comillas/apóstrofos, puntuación, tildes)
+
+El diagnóstico encontró miles de valores con comillas y apóstrofos en varias
+variantes (`"`, `'` recto, `´` acento agudo, `` ` `` grave; ~2,987 registros),
+además de guiones y paréntesis, y tildes usadas de forma inconsistente (3,227
+valores con tilde y el resto sin tilde).
+
+- **Regla:** normalización de texto explícita y conservadora, en este orden:
+  1. recortar espacios inicio/fin y colapsar espacios múltiples;
+  2. unificar las comillas/apóstrofos tipográficos a una sola forma
+     (`´`, `` ` ``, `’` → `'`) y quitar comillas dobles envolventes;
+  3. dejar la variable en mayúsculas (ya lo está) y en UTF-8.
+  No se eliminan palabras ni se reordenan; solo se uniforma el "ruido" de
+  puntuación. **No** se fuerza la restitución de tildes sobre el nombre
+  mostrado (ver E3): las tildes se manejan solo en la clave de detección.
+- **Por qué funcionará:** los chequeos de formato del diagnóstico (celda 3.1)
+  cuantifican exactamente qué caracteres hay; las reglas atacan solo esos
+  caracteres con reemplazos deterministas, sin tocar el contenido del nombre.
+- **Riesgos:**
+  - Alterar un nombre propio legítimo (p. ej. un apóstrofo que sí forma parte
+    del nombre). Se mitiga limitando la regla a variantes tipográficas y
+    conservando siempre el archivo crudo como fuente de verdad.
+  - Problemas de encoding al escribir tildes/caracteres especiales. Se mitiga
+    guardando en UTF-8 y documentando el encoding en el libro de códigos.
+
+#### Problema E3: mismo nombre escrito de distintas formas (tildes / prefijo `INED`)
+
+El diagnóstico mostró que ~970 "nombres base" (unos 5,031 registros) aparecen
+escritos de más de una forma: con y sin tilde y con o sin el prefijo `INED`
+(ej.: `INSTITUTO NACIONAL DE EDUCACION DIVERSIFICADA` /
+`INSTITUTO NACIONAL DE EDUCACIÓN DIVERSIFICADA` /
+`INED INSTITUTO NACIONAL DE EDUCACIÓN DIVERSIFICADA`).
+
+- **Regla:** **no** unificar automáticamente los nombres mostrados. Se crea una
+  **variable derivada auxiliar** `ESTABLECIMIENTO_NORM` (sin tildes, sin
+  prefijo `INED`, sin puntuación, espacios colapsados) que se usa **solo como
+  clave de detección/agrupación**, no para reemplazar el nombre original. Los
+  casos de un mismo nombre base con varias formas se listan y la decisión de
+  unificar o no se toma caso por caso y se documenta.
+- **Por qué funcionará:** normalizar en una columna aparte permite detectar
+  equivalencias sin destruir la escritura original de cada plantel, que puede
+  ser la oficial. La lógica de `ESTABLECIMIENTO_NORM` es la misma
+  `base_nombre` del diagnóstico, ya validada sobre los datos.
+- **Riesgos:**
+  - **Falsos positivos:** muchos nombres base son genéricos (institutos
+    nacionales, colegios por cooperativa) y corresponden a planteles distintos.
+    Por eso E3 **no** fusiona: la equivalencia de nombre se combina con
+    `CODIGO`, `DIRECCION` y `TELEFONO` en E7 antes de decidir nada.
+  - Que `ESTABLECIMIENTO_NORM` se confunda con el nombre real. Se mitiga
+    documentándola en el libro de códigos como variable derivada de uso interno
+    (justificación: por qué se creó, cómo se calcula, para qué sirve).
+
+### 2.2 `DIRECCION`
+
+#### Problema E4: faltantes y marcadores de nulo (87 registros, 0.73%)
+
+76 celdas vacías (`NaN`) más 11 marcadores escritos como texto (`-`, `.`).
+
+- **Regla:** unificar los marcadores de nulo a `NA` (usando `MARCADORES_NULO`,
+  el mismo patrón del diagnóstico) y **no** imputar: los faltantes se conservan
+  como `NA`.
+- **Por qué funcionará:** el patrón de marcadores ya está validado en el
+  diagnóstico; una dirección no puede deducirse de las demás columnas, así que
+  imputarla generaría datos incorrectos.
+- **Riesgos:** los faltantes de `DIRECCION` pasan de 76 a 87 al reclasificar los
+  11 marcadores. Se reporta así en el informe antes/después.
+
+#### Problema E5: normalización de texto (minúsculas, tildes, puntuación)
+
+10 valores con minúsculas, ~1,160 con tildes y puntuación densa/variable
+(guiones, puntos, comas, comillas).
+
+- **Regla:** misma normalización conservadora de E2 aplicada a `DIRECCION`:
+  recortar/colapsar espacios, pasar a mayúsculas consistentes, uniformar
+  comillas/apóstrofos. La puntuación estructural (guiones y números de casa,
+  p. ej. `3-59`) **no** se altera.
+- **Por qué funcionará:** son transformaciones deterministas sobre caracteres
+  puntuales que el diagnóstico ya cuantificó; el contenido informativo de la
+  dirección se conserva.
+- **Riesgos:** sobre-normalizar y perder un separador con significado. Se mitiga
+  no tocando dígitos ni el guion entre números; solo se uniforma texto.
+
+#### Problema E6: abreviaturas inconsistentes
+
+La misma pieza de dirección se abrevia de varias maneras: `AVENIDA` (2,768) vs
+`AVE`/`AVE.` (331); `ZONA` (5,213) vs `Z.` (11); además `CALLE` (3,675), `KM`
+(268), `NO`/`NO.` (253) y `#` (23).
+
+- **Regla:** estandarizar mediante un **diccionario explícito** de abreviaturas
+  → forma completa (`AVE`/`AVE.` → `AVENIDA`, `Z.` → `ZONA`, `NO`/`NO.` → `NO.`,
+  `#` → `NO.`, etc.), aplicado con expresiones regulares ancladas a **límites de
+  palabra** (`\b`). No se tocan los números de casa ni de zona.
+- **Por qué funcionará:** el diccionario cubre exactamente las variantes
+  detectadas en el diagnóstico (celda 3.3) y el uso de `\b` evita reemplazos
+  dentro de otras palabras (p. ej. `AVE` en `AVENIDA` no se vuelve a expandir).
+- **Riesgos:**
+  - **Sobre-corrección**: expandir una abreviatura donde no corresponde. Se
+    mitiga con límites de palabra, un diccionario cerrado y revisión de una
+    muestra tras aplicar la regla.
+  - Direcciones muy libres donde la abreviatura es ambigua. En esos casos se
+    conserva el valor y se marca; no se fuerza el reemplazo.
+
+#### Nota (no es error): valores genéricos poco específicos
+
+Direcciones como `CABECERA MUNICIPAL` (325), `BARRIO EL CENTRO`, `CALLE
+PRINCIPAL`, `ZONA 1`… son válidas pero poco informativas.
+
+- **Regla:** no se corrigen ni se eliminan; se **documentan** como limitación de
+  cobertura/precisión de la variable en el libro de códigos.
+- **Por qué:** son datos reales de la fuente; tratarlos como error sería
+  inventar información. Solo limitan análisis geoespaciales finos.
+
+### 2.3 Duplicados parciales (`ESTABLECIMIENTO` + `DIRECCION`)
+
+#### Problema E7: pares candidatos por similitud dentro del mismo municipio
+
+El diagnóstico (celda 3.4, RapidFuzz con bloqueo por `(DEPARTAMENTO,
+MUNICIPIO)` y umbral de score ≥ 90) encontró +14,000 pares de nombres muy
+similares; 5,307 con la **misma dirección** y 6,702 con el **mismo teléfono**.
+
+- **Regla:** analizar los candidatos, **priorizando** los que además comparten
+  `DIRECCION` o `TELEFONO` (los verdaderos sospechosos de duplicado real).
+  Para cada caso se decide **conservar** (planteles distintos con nombre
+  genérico) o **fusionar/anotar** (mismo plantel duplicado), y la decisión se
+  documenta. **No se elimina ningún registro de forma automática**, como exige
+  el enunciado.
+- **Por qué funcionará:** el bloqueo por municipio evita comparaciones
+  espurias entre departamentos y el cruce con `CODIGO`/`DIRECCION`/`TELEFONO`
+  distingue nombres genéricos legítimos de duplicados reales; `CODIGO` es único
+  (diagnóstico 1.5), así que sirve de árbitro.
+- **Riesgos:**
+  - **Falsos positivos** por nombres genéricos (la mayoría de los 14,000 pares):
+    se mitiga con la evidencia de dirección/teléfono y la revisión manual.
+  - **Falsos negativos** por debajo del umbral 90: se acepta como limitación y
+    se documenta el umbral usado; puede bajarse y revisarse si hace falta.
+
+### 2.4 Resumen de reglas (establecimiento y dirección)
+
+| # | Variable | Problema | Regla | Registros afectados (esperados) |
+|---|---|---|---|---|
+| E1 | `ESTABLECIMIENTO` | faltantes | conservar `NA`, no imputar | 5 |
+| E2 | `ESTABLECIMIENTO` | comillas/apóstrofos/puntuación/espacios | normalización de texto conservadora | ~2,987 |
+| E3 | `ESTABLECIMIENTO` | mismo nombre escrito distinto (tildes / `INED`) | derivar `ESTABLECIMIENTO_NORM` para detectar; no unificar automáticamente | ~970 nombres base / 5,031 registros |
+| E4 | `DIRECCION` | faltantes + marcadores (`-`, `.`) | unificar marcadores → `NA`, no imputar | 87 |
+| E5 | `DIRECCION` | minúsculas / tildes / puntuación | normalización de texto conservadora | ~1,170 |
+| E6 | `DIRECCION` | abreviaturas inconsistentes | diccionario explícito con límites de palabra | miles |
+| E7 | `ESTABLECIMIENTO` + `DIRECCION` | duplicados parciales | revisión por similitud + `DIRECCION`/`TELEFONO`; decisión caso por caso, sin borrado automático | +14,000 pares candidatos |
+
+Ninguna regla elimina filas de forma automática. Variable nueva:
+`ESTABLECIMIENTO_NORM` (derivada, de uso interno para detección; justificada en
+el libro de códigos). Los valores genéricos de `DIRECCION` se documentan como
+limitación, no se corrigen.
 
 ## 3. Teléfono, director y supervisor (P3)
 
