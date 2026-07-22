@@ -568,4 +568,35 @@ regla E7.
 
 ## 4. Código y variables categóricas (P4)
 
-*(pendiente)*
+### 4.1 `CODIGO`
+
+#### Problema C1: validar que el código siga el patrón esperado
+
+El diagnóstico mostró que todos los registros siguen la forma `NN-NN-NNNN-NN`.
+
+- **Regla:** conservar `CODIGO` como texto y validar exactamente el patrón `^\d{2}-\d{2}-\d{4}-\d{2}$`.
+- **Por qué funcionará:** el código funciona como llave primaria y no requiere recodificación.
+- **Riesgos:** si la fuente cambia de estructura en una nueva extracción, la validación lo detectará de inmediato.
+
+### 4.2 Variables categóricas de dominio cerrado
+
+Variables cubiertas: `SECTOR`, `AREA`, `STATUS`, `MODALIDAD`, `JORNADA`, `PLAN`, `NIVEL`.
+
+- **Regla general:** recortar espacios, colapsar espacios múltiples y mantener mayúsculas consistentes. No se recodifican categorías válidas ni se inventan sinónimos no observados en la fuente.
+- **Por qué funcionará:** el diagnóstico mostró que los dominios son cerrados y ya llegan uniformes en la fuente cruda.
+- **Riesgos:** mínimos; la única precaución es no alterar valores válidos como `INTERCALADO` en `PLAN`, que se conserva tal como aparece en la fuente.
+
+### 4.3 Resumen de reglas (código y categorías)
+
+| # | Variable | Problema | Regla | Registros afectados (esperados) |
+|---|---|---|---|---|
+| C1 | `CODIGO` | validar formato | conservar como texto y validar patrón fijo | 0 |
+| C2 | `SECTOR` | normalización mínima | recortar/colapsar espacios y preservar categorías válidas | 0 |
+| C3 | `AREA` | normalización mínima | recortar/colapsar espacios y preservar categorías válidas | 0 |
+| C4 | `STATUS` | normalización mínima | recortar/colapsar espacios y preservar categorías válidas | 0 |
+| C5 | `MODALIDAD` | normalización mínima | recortar/colapsar espacios y preservar categorías válidas | 0 |
+| C6 | `JORNADA` | normalización mínima | recortar/colapsar espacios y preservar categorías válidas | 0 |
+| C7 | `PLAN` | normalización mínima | recortar/colapsar espacios y preservar categorías válidas | 0 |
+| C8 | `NIVEL` | valor constante | conservar `DIVERSIFICADO` | 0 |
+
+La implementación reproducible del plan completo está en [src/clean_mineduc.py](src/clean_mineduc.py).
